@@ -3,6 +3,7 @@ module Main where
 import Control.Distributed.Process.Gossip
 import Control.Monad
 import Control.Monad.Reader
+import Control.Concurrent (threadDelay)
 import Network.Transport
 import Network.Transport.TCP (createTransport, defaultTCPParameters)
 import Control.Distributed.Process
@@ -22,6 +23,6 @@ main = do
 
     runCluster node (map makeNodeId seeds) $ do
         self <- getSelfPid
-        say "Waiting for hello"
-        forever $ expect >>= \case
-            "hej" -> say "hej"
+        forever $ do
+            liftIO $ threadDelay 5000000
+            getpeers >>= say . show

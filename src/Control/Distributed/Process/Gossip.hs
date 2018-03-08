@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveGeneric
             , LambdaCase
             , ImplicitParams  #-}
-module Control.Distributed.Process.Gossip(runCluster) where
+module Control.Distributed.Process.Gossip(runCluster, getpeers) where
 
 import Data.Binary (Binary)
 import GHC.Generics
@@ -17,17 +17,33 @@ import Control.Distributed.Process.Gossip.Internal.VClock as VClock
 
 type Version = VClock ProcessId Integer
 
+data Peer = Peer ProcessId PeerState
+    deriving (Show, Generic)
+
+data GetPeers = GetPeers
+    deriving (Show, Generic)
+
 data Protocol = Join ProcessId
-              | JoinAck ProcessId Version [ProcessId]
-              | Gossip ProcessId Version [ProcessId]
+              | JoinAck ProcessId Version [Peer]
+              | Gossip ProcessId Version [Peer]
               | GossipTimer
+              | Ping ProcessId | Pong
               deriving(Show, Eq, Generic)
 
+
+data PeerState = Up | Down deriving (Show, Eq, Generic)
+
 instance Binary Protocol where
+instance Binary PeerState where
+instance Binary Peer where
+instance Binary GetPeers
+
+instance Eq Peer where
+    (Peer p1 _) == (Peer p2 _) = p1 == p2
 
 data ClusterState  = ClusterState {
     _version :: Version,
-    _peers :: [ProcessId]
+    _peers :: [Peer]
 }
 
 data Config = Config { state :: !(TVar ClusterState) }
@@ -41,23 +57,18 @@ get = liftIO $ readTVarIO (state ?config)
 modify :: (MonadIO m) => (?config :: Config) => (ClusterState -> ClusterState) -> m ()
 modify f = liftIO $ atomically $ modifyTVar' (state ?config) f
 
-timer t p = spawnLocal $ forever (liftIO $ threadDelay t) >> p
-
 sample :: [g] -> IO g
 sample lst = do
     i <- randomRIO (0, length lst -1)
     return $ lst !! i
 
-dogossip :: (?config :: Config) => Process ()
-dogossip = do
+handle GossipTimer = do
     self <- getSelfPid
     ClusterState version peers <- get
-    p <- liftIO $ sample peers
+    Peer p _ <- liftIO $ sample (filter (\(Peer p s) -> s == Up) peers)
     send p (Gossip self version peers)
 
-handlegossip :: (?config :: Config) => ProcessId -> Version -> [ProcessId] -> Process ()
-handlegossip pid v1 peers = do
-    say $ "Gossip from " ++ (show pid)
+handle (Gossip pid v1 peers) = do
     ClusterState v2 peers2 <- get
     put $ case v1 `relates` v2 of
         Same -> ClusterState v1 peers
@@ -66,35 +77,70 @@ handlegossip pid v1 peers = do
         Concurrent -> ClusterState (v1 `merge` v2) (peers `union` peers2)
 
     ClusterState _ npeers <- get
-    say $ "Now have" ++ (show npeers)
     return ()
+
+handle (Join id) = do
+    self <- getSelfPid
+    modify $ \s -> s { _version = VClock.inc self (_version s),
+                       _peers = [Peer id Up] `union` (_peers s) }
+    ClusterState v p <- get
+    send id (JoinAck self v p)
+    return ()
+
+handle (Ping p) = do
+    send p Pong
+
+handlePeerRequest :: (?config :: Config) => SendPort [ProcessId] -> Process ()
+handlePeerRequest sender = do
+    ClusterState _ npeers <- get
+    sendChan sender $  map (\(Peer p _) -> p) $ filter (\(Peer _ s) -> s == Up) npeers
+
+getpeers :: Process [NodeId]
+getpeers = do
+    (sp, rp) <- newChan
+    nsend clusterController (sp :: SendPort [ProcessId])
+    receiveChan rp >>= return . map processNodeId
+
+
+heartbeat :: (?config :: Config) => Process ()
+heartbeat = forever $ do
+    self <- getSelfPid
+    liftIO $ threadDelay 5000000
+    ClusterState _ peers <- get
+    Peer p _ <- liftIO $ sample (filter (\(Peer p s) -> s == Up) peers)
+    send p (Ping self)
+    expectTimeout 1000000 >>= \case
+        (Just Pong) -> return ()
+        Nothing     -> modify $ \s -> s { _version = VClock.inc self (_version s),
+                                          _peers = [Peer p Down] `union` (_peers s)}
+
+
+clusterController = "Cluster:Controller"
+
+gossip :: (?config :: Config) => ProcessId -> Process ()
+gossip pid = do
+    forever $ do
+        liftIO $ threadDelay 5000000
+        send pid GossipTimer
 
 
 initialized  :: (?config :: Config) => Process ()
 initialized = do
     pid <- getSelfPid
     say $ "Cluster started"
-    spawnLocal $ forever $ do
-        liftIO $ threadDelay 5000000
-        send pid GossipTimer
 
-    forever $ expect >>= \case
-        Join id     -> do
-            say $ (show id) ++ "Wants to join"
-            modify $ \s -> s { _version = VClock.inc pid (_version s),
-                               _peers = id : (_peers s) }
-            ClusterState v p <- get
-            send id (JoinAck id v p)
-        GossipTimer -> dogossip
-        Gossip id version peers -> handlegossip id version peers
-        _           -> say $ "Got something else"
+    spawnLocal $ gossip pid
+    spawnLocal heartbeat
+
+    forever $ receiveWait [ match handle,
+                            match handlePeerRequest ]
 
 uninitialized :: (?config :: Config) => [NodeId] -> Process ()
 uninitialized [] = do
     pid <- getSelfPid
 
     modify $ \s -> s { _version = VClock.incDefault pid 0 (_version s),
-                       _peers = [pid] }
+                       _peers = [Peer pid Up] }
     initialized
 
 uninitialized seeds = do
@@ -102,7 +148,7 @@ uninitialized seeds = do
     seedNode <- liftIO $ sample seeds
 
     say $ "Trying to join " ++ show seedNode
-    nsendRemote seedNode "Cluster:Controller" (Join pid)
+    nsendRemote seedNode clusterController (Join pid)
     receiveWait [match $ joining]
 
 joining (JoinAck rpid version peers) = do
@@ -119,7 +165,7 @@ runCluster node seeds proc = do
     cstate <- newTVarIO initialState
     let ?config = Config cstate
     _ <- forkProcess node $ do
-        getSelfPid >>= register "Cluster:Controller"
+        getSelfPid >>= register clusterController
         uninitialized seeds
     runProcess node proc
     where initialState = ClusterState VClock.empty [] 
