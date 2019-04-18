@@ -1,8 +1,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, LambdaCase #-}
 module Main where
-import Control.Distributed.Process.Gossip
+import Control.Distributed.Process.Cluster
 import Control.Monad
-import Control.Monad.Reader
 import Control.Concurrent (threadDelay)
 import Network.Transport
 import Network.Transport.TCP (createTransport, defaultTCPParameters)

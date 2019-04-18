@@ -1,3 +1,3 @@
-# Changelog for distributed-process-gossip
+# Changelog for distributed-process-cluster
 
 ## Unreleased changes

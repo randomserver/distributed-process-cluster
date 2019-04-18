@@ -1,8 +1,8 @@
-name:                distributed-process-gossip
+name:                distributed-process-cluster
 version:             0.1.0.0
-github:              "kaffepanna/distributed-process-gossip"
+github:              "kaffepanna/distributed-process-cluster"
 license:             BSD3
-author:              "Patrik"
+author:              "Patrik Pettersson"
 maintainer:          "pettersson.pa@gmail.com"
 copyright:           "2018 Patrik"
 
@@ -17,16 +17,20 @@ extra-source-files:
 # To avoid duplicated efforts in documentation and dealing with the
 # complications of embedding Haddock markup inside cabal files, it is
 # common to point users to the README.md file.
-description:         Please see the README on Github at <https://github.com/kaffepanna/distributed-process-gossip#readme>
+description:         Please see the README on Github at <https://github.com/kaffepanna/distributed-process-cluster#readme>
 
 dependencies:
-- base >= 4.7 && < 5
+- base >= 4.10 && < 5
+- distributed-process
+- binary
+- stm
+- random
 
 library:
   source-dirs: src
 
 executables:
-  distributed-process-gossip-exe:
+  distributed-process-cluster-exe:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
@@ -34,10 +38,13 @@ executables:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - distributed-process-gossip
+    - distributed-process-cluster
+    - network-transport
+    - network-transport-tcp
+    - bytestring
 
 tests:
-  distributed-process-gossip-test:
+  distributed-process-cluster-test:
     main:                Spec.hs
     source-dirs:         test
     ghc-options:
@@ -45,4 +52,4 @@ tests:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - distributed-process-gossip
+    - distributed-process-cluster

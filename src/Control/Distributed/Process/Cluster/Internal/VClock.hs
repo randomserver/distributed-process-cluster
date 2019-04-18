@@ -1,4 +1,4 @@
-module Control.Distributed.Process.Gossip.Internal.VClock (VClock
+module Control.Distributed.Process.Cluster.Internal.VClock (VClock
               , Relation(..)
               , empty
               , insert

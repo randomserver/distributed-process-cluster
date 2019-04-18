@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveGeneric
             , LambdaCase
             , ImplicitParams  #-}
-module Control.Distributed.Process.Gossip(runCluster, getpeers) where
+module Control.Distributed.Process.Cluster(runCluster, getpeers) where
 
 import Data.Binary (Binary)
 import GHC.Generics
@@ -9,11 +9,12 @@ import System.Random
 import Data.List
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.STM
-import Control.Monad.Reader
+import Control.Monad.IO.Class
+import Control.Monad
 import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
 import Control.Distributed.Process.Node
-import Control.Distributed.Process.Gossip.Internal.VClock as VClock
+import Control.Distributed.Process.Cluster.Internal.VClock as VClock
 
 type Version = VClock ProcessId Integer
 

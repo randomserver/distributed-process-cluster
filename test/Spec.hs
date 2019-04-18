@@ -1,7 +1,7 @@
 import Test.Framework
 import Test.Framework.Providers.HUnit
 import Test.HUnit
-import Control.Distributed.Process.Gossip.Internal.VClock as VC
+import Control.Distributed.Process.Cluster.Internal.VClock as VC
 
 main :: IO ()
 main = defaultMain [ testCase "insert" test_insert
