@@ -1,0 +1,5 @@
+image: " fpco/stack-build:lts-11.22"
+
+tasks:
+  - init: stack build
+    command: stack run
